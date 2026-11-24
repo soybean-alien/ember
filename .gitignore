@@ -1,0 +1,12 @@
+# Ember by soybean_alien
+# The seller's own listings, buyers and photos never leave this PC.
+data/
+
+# Installer build output
+installer/Output/
+
+node_modules/
+*.log
+
+# Local agent files
+.claude/

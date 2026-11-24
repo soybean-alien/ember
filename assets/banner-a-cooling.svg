@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" font-family="Segoe UI, system-ui, sans-serif">
+  <!-- Ember by soybean_alien. Mockup A: the cooling row. A deal is warm the moment a buyer writes, and cools by the hour. -->
+  <rect width="1280" height="640" fill="#071023"/>
+  <text x="120" y="300" font-size="150" font-weight="700" fill="#eaf0ff" letter-spacing="-3">Ember</text>
+  <text x="124" y="362" font-size="30" fill="#8d9dc2">Know which deals are still warm.</text>
+  <g transform="translate(124 450)">
+    <circle cx="22" cy="22" r="22" fill="#ff7a1a"/>
+    <circle cx="112" cy="22" r="22" fill="#c9631f"/>
+    <circle cx="202" cy="22" r="22" fill="#8b4c2b"/>
+    <circle cx="292" cy="22" r="22" fill="#4d3a3f"/>
+    <circle cx="382" cy="22" r="22" fill="#1e3260"/>
+    <text x="0" y="86" font-size="18" fill="#8d9dc2" letter-spacing="2">JUST NOW</text>
+    <text x="352" y="86" font-size="18" fill="#8d9dc2" letter-spacing="2">2 DAYS</text>
+  </g>
+  <text x="1160" y="560" font-size="22" fill="#8d9dc2" text-anchor="end">by soybean_alien</text>
+</svg>

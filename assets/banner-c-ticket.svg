@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" font-family="Segoe UI, system-ui, sans-serif">
+  <!-- Ember by soybean_alien. Mockup C: the ticket. One item, one ticket, one line saying whose move it is. -->
+  <rect width="1280" height="640" fill="#ff7a1a"/>
+  <rect x="100" y="110" width="1080" height="420" rx="18" fill="#071023"/>
+  <rect x="100" y="110" width="16" height="420" fill="#eaf0ff"/>
+  <text x="170" y="196" font-size="24" fill="#8d9dc2" font-family="Cascadia Mono, Consolas, monospace" letter-spacing="2">EM-0001</text>
+  <text x="166" y="360" font-size="150" font-weight="700" fill="#eaf0ff" letter-spacing="-3">Ember</text>
+  <text x="170" y="430" font-size="30" fill="#ff7a1a" font-weight="600">Your move.</text>
+  <text x="330" y="430" font-size="30" fill="#8d9dc2">A sales desk for one seller and a lot of items.</text>
+  <line x1="880" y1="110" x2="880" y2="530" stroke="#1e3260" stroke-width="3" stroke-dasharray="4 12"/>
+  <text x="1120" y="490" font-size="22" fill="#8d9dc2" text-anchor="end">by soybean_alien</text>
+</svg>

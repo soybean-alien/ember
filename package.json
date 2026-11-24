@@ -1,0 +1,14 @@
+﻿{
+  "name": "ember",
+  "version": "0.1.0",
+  "description": "Local tracker for items listed for sale: where each is posted, what stage it is in, and who is asking about it.",
+  "type": "module",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

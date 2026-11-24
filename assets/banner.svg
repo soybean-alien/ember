@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" font-family="Segoe UI, system-ui, sans-serif">
+  <!-- Ember by soybean_alien. Mockup B: the stage strip. Every colour is one place a deal can be, in order, draft to sold. -->
+  <rect width="1280" height="640" fill="#071023"/>
+  <g transform="translate(120 150)">
+    <rect x="0" width="96" height="14" rx="3" fill="#7f8db0"/>
+    <rect x="105" width="96" height="14" rx="3" fill="#4da3ff"/>
+    <rect x="210" width="96" height="14" rx="3" fill="#ff7a1a"/>
+    <rect x="315" width="96" height="14" rx="3" fill="#ffd23f"/>
+    <rect x="420" width="96" height="14" rx="3" fill="#ff5d73"/>
+    <rect x="525" width="96" height="14" rx="3" fill="#b48cff"/>
+    <rect x="630" width="96" height="14" rx="3" fill="#7fd6e8"/>
+    <rect x="735" width="96" height="14" rx="3" fill="#b6f23c"/>
+    <rect x="840" width="96" height="14" rx="3" fill="#2ee6c0"/>
+    <rect x="945" width="96" height="14" rx="3" fill="#3ddc84"/>
+  </g>
+  <circle cx="158" cy="330" r="38" fill="#ff7a1a"/>
+  <text x="226" y="378" font-size="140" font-weight="700" fill="#eaf0ff" letter-spacing="-3">Ember</text>
+  <text x="124" y="470" font-size="30" fill="#8d9dc2">Every item you're selling, and exactly where each deal stands.</text>
+  <text x="1160" y="560" font-size="22" fill="#8d9dc2" text-anchor="end">by soybean_alien</text>
+</svg>

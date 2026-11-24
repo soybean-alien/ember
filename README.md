@@ -2,6 +2,8 @@
 
 ![Ember](assets/banner.svg)
 
+<p align="center"><img src="assets/Ember-Stack.svg" alt="Built with HTML 65.2%, JavaScript 28.3%, Batchfile 2.6%"></p>
+
 A local sales desk for one seller with a lot of items. It tracks what is listed where, who has written in, where each deal stands, and whose move it is. Ember by soybean_alien.
 
 It runs only on this PC (address `127.0.0.1`, port 4319). Nothing is sent anywhere. There is no AI inside it: listings are written in chat with Claude from [PLAYBOOK.md](PLAYBOOK.md) and pasted in.

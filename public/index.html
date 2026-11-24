@@ -102,6 +102,9 @@
   details summary { cursor:pointer; color:var(--mute); margin:8px 0; }
   #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--accent); color:#1a0d00; font-weight:600; padding:8px 16px; border-radius:20px; opacity:0; transition:opacity .2s; pointer-events:none; }
   #toast.show { opacity:1; }
+  #toast.bad { background:#ff5d73; color:#fff; }
+  .remacts { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:6px; }
+  .remacts select.mini { width:auto; padding:2px 6px; font-size:12px; }
 
   /* Tutorial: a card that follows a practice sale, and a pulsing ring on the control to use next. */
   #tour { position:fixed; left:246px; bottom:18px; width:min(400px, calc(100vw - 32px)); z-index:50; background:var(--raise); border:1px solid var(--accent); border-radius:12px; padding:14px 16px; box-shadow:0 10px 30px rgba(0,0,0,.5); }
@@ -133,8 +136,16 @@
   <div style="padding:0 8px">
     <label>Payment</label><input data-set="payment">
     <label style="margin-top:6px">Meet-up spot</label><input data-set="spot" placeholder="e.g. Kroger parking lot">
-    <label style="margin-top:6px">Town and zip</label><input data-set="area" placeholder="e.g. Springfield, IL 62701">
+    <label style="margin-top:6px">Town and postcode or zip</label><input data-set="area" placeholder="e.g. Springfield, IL 62701">
     <label style="margin-top:6px">Local pickup discount, % off the going rate</label><input data-set="local_off" type="number" min="0" max="90" step="1">
+    <label style="margin-top:6px">Remind me before a pickup, minutes</label><input data-set="remind_mins" type="number" min="0" max="1440" step="5">
+  </div>
+  <div class="sidehead">Region</div>
+  <div style="padding:0 8px">
+    <label>Country (dates, eBay site)</label><select data-set="region"><option value="US">United States</option><option value="UK">United Kingdom</option><option value="IE">Ireland</option><option value="DE">Germany</option></select>
+    <label style="margin-top:6px">Currency for new items</label><select data-set="currency"><option>GBP</option><option>USD</option><option>EUR</option></select>
+    <button style="margin-top:10px;width:100%" data-backup>Back up now</button>
+    <small class="meta" id="ver"></small>
   </div>
 </nav>
 <div>
@@ -142,7 +153,7 @@
   <input id="search" type="search" placeholder="Search items, buyers, handles">
   <form class="quick" id="quick">
     <input id="qname" placeholder="New item: brand, model, size" style="width:280px" required>
-    <input id="qprice" placeholder="Asking $" type="number" min="0" step="any" style="width:110px">
+    <input id="qprice" placeholder="Asking" type="number" min="0" step="any" style="width:110px">
     <button class="primary">Add item</button>
   </form>
 </header>
@@ -175,11 +186,16 @@ async function api(method, url, body) {
   if (!r.ok) throw new Error(j.error || r.status);
   return j;
 }
-function toast(msg) { const t = $("#toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 1800); }
+// A save that fails says so instead of failing silently.
+window.addEventListener("unhandledrejection", (e) => toast(`Not saved: ${e.reason?.message || e.reason}`, true));
+function toast(msg, bad) { const t = $("#toast"); t.textContent = msg; t.classList.toggle("bad", !!bad); t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), bad ? 5000 : 1800); }
 async function copy(text, msg = "Copied") { await navigator.clipboard.writeText(text); toast(msg); }
 
 async function load() {
   state = await api("GET", "/api/board");
+  useSettings(state.settings);
+  $("#qprice").placeholder = `Asking ${symbol()}`;
+  $("#ver").textContent = `Ember ${state.version}`;
   document.querySelectorAll("[data-set]").forEach((el) => { if (document.activeElement !== el) el.value = state.settings[el.dataset.set] || ""; });
   renderBoard();
 }
@@ -194,7 +210,7 @@ function buyerLine(i) {
   const lead = leadOf(i);
   if (!lead || i.stage === "sold") return "";
   const others = i.buyers.filter((b) => b.stage !== "dropped").length - 1;
-  return `${ember(lead.updated)} ${esc(lead.name || "Buyer")}${lead.meet ? `, ${esc(lead.meet)}` : ""} <span class="meta">${esc(ago(lead.updated))}${others > 0 ? ` · +${others}` : ""}</span>`;
+  return `${ember(lead.updated)} ${esc(lead.name || "Buyer")}${lead.pickup_at ? `, ${esc(whenOf(lead.pickup_at))}` : lead.meet ? `, ${esc(lead.meet)}` : ""} <span class="meta">${esc(ago(lead.updated))}${others > 0 ? ` · +${others}` : ""}</span>`;
 }
 
 // Every redraw re-checks the tutorial once the screen has settled (the drawer is often redrawn right after the board).
@@ -203,16 +219,23 @@ function tourSoon() { clearTimeout(tourSoon.t); tourSoon.t = setTimeout(tourChec
 function renderBoard() {
   tourSoon();
   const s = state.stats;
-  $("#moves").innerHTML = state.reminders.length ? `<h2>Your move</h2>` + state.reminders.map((r) =>
+  // Each reminder can be marked done, snoozed or dismissed without touching the buyer's status.
+  const rem = (r, k) => `data-rem="${k}" data-ref="${esc(r.ref)}" data-key="${esc(r.key)}"`;
+  $("#moves").innerHTML = state.reminders.length || state.snoozed ? `<h2>Your move${state.snoozed ? ` <small class="meta">${state.snoozed} snoozed</small>` : ""}</h2>` + state.reminders.map((r) =>
     `<div class="move" data-open="${r.item_id}" style="--c:${(BUYER[r.stage] || STAGE.listed).c}">
-      <b>${esc(r.text)}</b><small>${esc([r.buyer, r.item].filter(Boolean).join(" · "))}${r.due ? ` · due ${esc(ago(r.due))}` : ""}</small></div>`).join("") : "";
+      <b>${esc(r.text)}</b><small>${esc([r.buyer, r.item].filter(Boolean).join(" · "))}${r.due && r.kind !== "posting" ? ` · due ${esc(ago(r.due))}` : ""}</small>
+      <span class="remacts">${r.kind === "posting"
+        ? `${r.url ? `<a href="${esc(r.url)}" target="_blank" rel="noopener">Open listing</a>` : ""}<button class="mini go" data-takedown="${r.posting_id}">I took it down</button>`
+        : `<button class="mini go" ${rem(r, "done")}>Done</button>`}
+        <select class="mini" ${rem(r, "snoozed")}><option value="">Snooze…</option><option value="60">1 hour</option><option value="180">3 hours</option><option value="tonight">Tonight 19:00</option><option value="tomorrow">Tomorrow 09:00</option></select>
+        <button class="mini" ${rem(r, "dismissed")} title="Hide this reminder">Dismiss</button></span></div>`).join("") : "";
   $("#stats").innerHTML = [
     [state.reminders.length, "waiting on you", "hot"],
     [s.listed, "listed now"],
-    [money(s.listed_value) || "$0", "asking, in total"],
+    [totals(s.listed_value), "asking, in total"],
     [s.in_talks, "with a buyer talking"],
     [s.sold, "sold"],
-    [money(s.sold_value) || "$0", "taken in"],
+    [totals(s.sold_value), "taken in"],
     [s.sold ? `${s.at_asking} of ${s.sold}` : "0", "sold at asking price"],
     [s.avg_days ?? "0", "days to sell, on average"],
   ].map(([v, l, cls]) => `<div class="stat ${cls && v ? cls : ""}"><b>${esc(v)}</b><small>${l}</small></div>`).join("");
@@ -253,14 +276,14 @@ function row(i) {
     <td>${platforms.map((p) => `<span class="chip">${esc(p)}</span>`).join("")}</td>
     <td>${buyerLine(i)}</td>
     <td>${i.days_listed === null ? "" : days(i.days_listed)}</td>
-    <td><b>${i.stage === "sold" ? money(i.sold_price) : money(i.asking)}</b></td>
+    <td><b>${i.stage === "sold" ? money(i.sold_price, 2, i.currency) : money(i.asking, 2, i.currency)}</b></td>
     <td>${quick(i)}</td>
   </tr>`;
 }
 
 function card(i) {
   const live = i.postings.filter((p) => p.platform && (p.status === "live" || i.stage === "sold"));
-  const price = i.stage === "sold" ? `${money(i.sold_price)} sold` : money(i.asking);
+  const price = i.stage === "sold" ? `${money(i.sold_price, 2, i.currency)} sold` : money(i.asking, 2, i.currency);
   const age = i.days_listed === null ? "" : i.stage === "sold" ? `sold in ${days(i.days_listed)}` : `${days(i.days_listed)} listed`;
   return `<div class="card${sel === i.id ? " on" : ""}" data-open="${i.id}">
     ${thumb(i)}
@@ -280,7 +303,7 @@ function buyerBox(i, b) {
   const m = b.move;
   const next = !m ? "" : m.who === "you" || m.is_due
     ? `<div class="next"><b>Your move:</b> ${esc(m.text)}</div>`
-    : `<div class="next">Their move. ${m.due ? `If nothing changes: ${esc(m.text.toLowerCase())}, ${new Date(m.due).toLocaleString("en-GB", { weekday: "short", hour: "2-digit", minute: "2-digit" })}.` : esc(m.text) + "."}</div>`;
+    : `<div class="next">Their move. ${m.due ? `${b.stage === "confirmed" ? "Reminder" : "If nothing changes"}: ${esc(m.text.toLowerCase())}, ${esc(whenOf(m.due))}.` : esc(m.text) + (b.stage === "confirmed" ? ". Set the pickup time below and Ember reminds you before it." : ".")}</div>`;
   const closing = ["accepted", "time set", "confirmed"].includes(b.stage);
   const after = ["bought", "thanked"].includes(b.stage);
   return `<div class="sub" style="--c:${BUYER[b.stage]?.c || STAGE.draft.c}">
@@ -289,7 +312,11 @@ function buyerBox(i, b) {
     <div class="row r3"><input placeholder="Name" ${field("buyer", b.id, "name", b.name)}>
       <input list="platforms" placeholder="Platform" ${field("buyer", b.id, "platform", b.platform)}>
       <span class="meta">${ember(b.updated)} moved ${esc(ago(b.updated))}</span></div>
-    <div class="row r2"><input placeholder="Email or handle" ${field("buyer", b.id, "handle", b.handle)}><input placeholder="Pickup day and time" ${field("buyer", b.id, "meet", b.meet)}></div>
+    <div class="row r3"><input placeholder="Email or handle" ${field("buyer", b.id, "handle", b.handle)}>
+      <div><label>Their offer ${symbol(i.currency)}</label><input type="number" min="0" step="any" ${field("buyer", b.id, "offer", b.offer ?? "")}></div>
+      <div><label>Agreed price ${symbol(i.currency)}</label><input type="number" min="0" step="any" placeholder="${esc(i.asking ?? "")}" ${field("buyer", b.id, "agreed_price", b.agreed_price ?? "")}></div></div>
+    <div class="row r2"><div><label>Pickup day and time</label><input type="datetime-local" ${field("buyer", b.id, "pickup_at", b.pickup_at)}></div>
+      <div><label>Pickup note</label><input placeholder="e.g. side entrance" ${field("buyer", b.id, "meet", b.meet)}></div></div>
     <div class="row r2"><input placeholder="Note" ${field("buyer", b.id, "note", b.note)}><input type="datetime-local" title="Remind me to follow up at" ${field("buyer", b.id, "follow_up", b.follow_up)}></div>
     <div class="row" style="grid-template-columns:1fr auto;margin:0">
       <span>${closing ? `<button class="primary" data-act="wrapup" data-id="${b.id}">Copy wrap-up message</button>` : ""}${after ? `<button class="primary" data-act="thanks" data-id="${b.id}">Copy thank-you and feedback message</button>` : ""}</span>
@@ -310,9 +337,10 @@ function mktLine(i) {
   if (!mid) return "Open eBay sold prices, look at the last five or so that match your item's condition (and size, for clothes and bags), and type what you see.";
   const age = i.mkt_checked ? Math.floor((Date.now() - new Date(i.mkt_checked)) / 864e5) : null;
   const pct = Number(i.asking) ? ` Your asking price is ${Math.round((Number(i.asking) / mid) * 100)}% of the typical sold price.` : "";
-  return `Suggested asking price: <b>${money(sug)}</b>${off ? ` (typical ${money(mid)}, less ${off}% for local pickup)` : ""}.${pct}
-    ${Number(i.asking) !== sug && !i.sold_at ? `<button class="link" data-act="usemkt">Use ${money(sug)}</button>` : ""}
-    ${age === null ? "" : age > 30 ? `<span class="stale">Checked ${age} days ago; check again.</span>` : `Checked ${new Date(i.mkt_checked).toLocaleDateString("en-US")}.`}`;
+  const c = i.currency;
+  return `Suggested asking price: <b>${money(sug, 2, c)}</b>${off ? ` (typical ${money(mid, 2, c)}, less ${off}% for local pickup)` : ""}.${pct}
+    ${Number(i.asking) !== sug && !i.sold_at ? `<button class="link" data-act="usemkt">Use ${money(sug, 2, c)}</button>` : ""}
+    ${age === null ? "" : age > 30 ? `<span class="stale">Checked ${age} days ago; check again.</span>` : `Checked ${dateOf(i.mkt_checked)}.`}`;
 }
 
 let drawerSnap = ""; // the ticket as it was when the drawer was last drawn
@@ -329,20 +357,20 @@ function renderDrawer() {
     <div class="head"><span><span class="pill" id="dstage" style="${col(i.stage)}">${STAGE[i.stage].label}</span> <span class="meta">${ticket(i.id)}</span></span><button class="link" data-act="close">Close</button></div>
     <div class="row r3" style="margin-top:12px">
       <div><label>Item</label><input ${field("item", i.id, "name", i.name)}></div>
-      <div><label>Asking $</label><input type="number" step="any" ${field("item", i.id, "asking", i.asking)}></div>
-      <div><label>New price $</label><input type="number" step="any" ${field("item", i.id, "new_price", i.new_price)}></div>
+      <div><label>Asking ${symbol(i.currency)} <select style="width:auto;padding:0 4px" data-kind="item" data-id="${i.id}" data-f="currency" title="This item's currency">${opts(["GBP", "USD", "EUR"], i.currency)}</select></label><input type="number" min="0" step="any" ${field("item", i.id, "asking", i.asking)}></div>
+      <div><label>New price ${symbol(i.currency)}</label><input type="number" min="0" step="any" ${field("item", i.id, "new_price", i.new_price)}></div>
     </div>
     <div class="soldbox">${
       i.sold_at
-        ? `<span>Sold for ${money(i.sold_price)} on ${new Date(i.sold_at).toLocaleDateString("en-US")}</span><button class="link" data-act="unsell">Undo</button>`
-        : `<input id="soldprice" type="number" step="any" placeholder="Sold for $" value="${esc(i.asking)}"><button data-act="sell">Mark sold</button>`
+        ? `<span>Sold for ${money(i.sold_price, 2, i.currency)} on ${dateOf(i.sold_at)}</span><button class="link" data-act="unsell">Undo</button>`
+        : `<input id="soldprice" type="number" min="0" step="any" placeholder="Sold for ${symbol(i.currency)}" value="${esc(dealPrice(i, leadOf(i)) ?? "")}"><button data-act="sell">Mark sold</button>`
     }</div>
 
-    <h3>Going rate <span><a href="https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(i.name || "")}&LH_Sold=1&LH_Complete=1&LH_ItemCondition=3000" target="_blank" rel="noopener">eBay sold prices</a> · <a href="https://www.facebook.com/marketplace/search/?query=${encodeURIComponent(i.name || "")}" target="_blank" rel="noopener">Marketplace now</a></span></h3>
+    <h3>Going rate <span><a href="https://${EBAY}/sch/i.html?_nkw=${encodeURIComponent(i.name || "")}&LH_Sold=1&LH_Complete=1&LH_ItemCondition=3000" target="_blank" rel="noopener">eBay sold prices</a> · <a href="https://www.facebook.com/marketplace/search/?query=${encodeURIComponent(i.name || "")}" target="_blank" rel="noopener">Marketplace now</a></span></h3>
     <div class="row r3" style="grid-template-columns:1fr 1fr 1fr">
-      <div><label>Lowest sold $</label><input type="number" step="any" ${field("item", i.id, "mkt_low", i.mkt_low)}></div>
-      <div><label>Typical sold $</label><input type="number" step="any" ${field("item", i.id, "mkt_mid", i.mkt_mid)}></div>
-      <div><label>Highest sold $</label><input type="number" step="any" ${field("item", i.id, "mkt_high", i.mkt_high)}></div>
+      <div><label>Lowest sold ${symbol(i.currency)}</label><input type="number" step="any" ${field("item", i.id, "mkt_low", i.mkt_low)}></div>
+      <div><label>Typical sold ${symbol(i.currency)}</label><input type="number" step="any" ${field("item", i.id, "mkt_mid", i.mkt_mid)}></div>
+      <div><label>Highest sold ${symbol(i.currency)}</label><input type="number" step="any" ${field("item", i.id, "mkt_high", i.mkt_high)}></div>
     </div>
     <div class="mkt meta" id="mktline">${mktLine(i)}</div>
 
@@ -356,6 +384,9 @@ function renderDrawer() {
         <select data-kind="posting" data-id="${p.id}" data-f="status">${opts(["live", "ended"], p.status)}</select></div>
       <div class="row" style="grid-template-columns:1fr auto auto;margin:0"><input placeholder="Link to the posting" ${field("posting", p.id, "url", p.url)}>
         ${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener">Open</a>` : "<span></span>"}<button class="link" data-act="delposting" data-id="${p.id}">Remove</button></div>
+      ${p.status !== "ended" ? "" : p.removed_at
+        ? `<div class="meta">Taken down on ${esc(p.platform || "the site")}, ${esc(dateOf(p.removed_at))} (you confirmed). <button class="link" data-act="notremoved" data-id="${p.id}">It's still up</button></div>`
+        : `<div class="flag">Ended in Ember, but still up on ${esc(p.platform || "the site")} until you take it down there. <button class="mini go" data-act="removed" data-id="${p.id}">I took it down</button></div>`}
     </div>`).join("") || `<div class="empty">Not posted anywhere yet</div>`}
 
     <h3>Listing text <span><select style="width:auto" ${field("item", i.id, "lead", "")}>${LEADS.map((l) => `<option value="${l}"${l === (i.lead || "") ? " selected" : ""}>${l || "Leads with…"}</option>`).join("")}</select></span></h3>
@@ -390,12 +421,34 @@ async function refresh(redraw) {
 }
 
 // Set a buyer's status. "Accepted" also puts the wrap-up message on the clipboard; "Paid and picked up" also marks the item sold.
+// Both ask for the price first: "Accepted" records the agreed price, and "Paid and picked up" lets it be corrected before the sale is recorded.
+function askPrice(question, start) {
+  for (;;) {
+    const v = prompt(question, start ?? "");
+    if (v === null) return undefined; // cancelled
+    if (v.trim() === "" || (Number.isFinite(Number(v)) && Number(v) >= 0)) return v.trim();
+    alert("Type a price of 0 or more, or leave it blank if you don't know it.");
+  }
+}
 async function setStage(buyerId, stage) {
-  await api("PUT", `/api/buyers/${buyerId}`, { stage });
+  const i0 = state.items.find((x) => x.buyers.some((b) => b.id === buyerId));
+  const b0 = i0.buyers.find((x) => x.id === buyerId);
+  const body = { stage };
+  if (stage === "accepted") {
+    const v = askPrice(`What price did ${b0.name || "they"} agree to?`, b0.agreed_price ?? b0.offer ?? i0.asking);
+    if (v === undefined) return;
+    body.agreed_price = v;
+  }
+  if (stage === "bought" && !i0.sold_at) {
+    const v = askPrice("Sold for (what they paid):", dealPrice(i0, b0));
+    if (v === undefined) return;
+    body.sold_price = v;
+  }
+  await api("PUT", `/api/buyers/${buyerId}`, body);
   await load();
   const i = state.items.find((x) => x.buyers.some((b) => b.id === buyerId));
   const b = i.buyers.find((x) => x.id === buyerId);
-  if (stage === "bought" && !i.sold_at) { await api("PUT", `/api/items/${i.id}`, { sold: true, sold_price: i.asking }); await load(); toast("Marked sold. A feedback reminder is set for two days from now."); }
+  if (stage === "bought" && !i0.sold_at) toast(`Sold for ${money(i.sold_price, 2, i.currency) || "an unknown price"}. Take the listings down: they're in Your move.`);
   if (stage === "accepted") await copy(wrapUp(i, b, state.settings), "Wrap-up message copied. Paste it to the buyer.").catch(() => {});
   sel = i.id; renderBoard(); renderDrawer();
 }
@@ -407,7 +460,28 @@ $("#quick").addEventListener("submit", async (e) => {
   sel = it.id; await refresh(true); $("#qname").focus();
 });
 
+async function remAct(el, until) {
+  state = await api("POST", "/api/reminders", { ref: el.dataset.ref, key: el.dataset.key, state: el.dataset.rem, until });
+  renderBoard();
+  toast({ done: "Done", dismissed: "Dismissed", snoozed: `Snoozed until ${until ? whenOf(until) : ""}` }[el.dataset.rem]);
+}
+// Snooze times: in an hour or three, tonight at 19:00, or tomorrow at 09:00.
+function snoozeUntil(v) {
+  const d = new Date();
+  if (v === "tonight") { if (d.getHours() >= 19) d.setDate(d.getDate() + 1); d.setHours(19, 0, 0, 0); return d; }
+  if (v === "tomorrow") { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; }
+  return new Date(Date.now() + Number(v) * 6e4);
+}
+$("#moves").addEventListener("change", (e) => {
+  const s = e.target.closest("select[data-rem]");
+  if (s && s.value) remAct(s, snoozeUntil(s.value).toISOString());
+});
 async function boardClick(e) {
+  if (e.target.closest("select, a")) return;
+  const r = e.target.closest("button[data-rem]");
+  if (r) return remAct(r);
+  const td = e.target.closest("[data-takedown]");
+  if (td) { await api("PUT", `/api/postings/${td.dataset.takedown}`, { removed: true }); await refresh(true); return toast("Marked as taken down"); }
   const acc = e.target.closest("[data-accept]");
   if (acc) return setStage(Number(acc.dataset.accept), "accepted");
   const q = e.target.closest("[data-quick]");
@@ -426,14 +500,15 @@ async function boardClick(e) {
 $("#board").addEventListener("click", boardClick);
 $("#moves").addEventListener("click", boardClick);
 
-document.querySelector(".side").addEventListener("click", (e) => {
+document.querySelector(".side").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-backup]")) { const r = await api("POST", "/api/backup"); return toast(`Backed up: ${r.backup}`); }
   const v = e.target.closest("[data-view]"), f = e.target.closest("[data-filter]");
   if (v) { view = v.dataset.view; localStorage.setItem("lo-view", view); }
   if (f) filter = f.dataset.filter;
   if (v || f) renderBoard();
 });
 document.querySelector(".side").addEventListener("change", async (e) => {
-  if (e.target.dataset.set) { state.settings = await api("PUT", "/api/settings", { [e.target.dataset.set]: e.target.value }); toast("Saved"); tourSoon(); renderDrawer(); }
+  if (e.target.dataset.set) { await api("PUT", "/api/settings", { [e.target.dataset.set]: e.target.value }); await load(); toast("Saved"); tourSoon(); renderDrawer(); }
 });
 $("#search").addEventListener("input", renderBoard);
 
@@ -443,7 +518,7 @@ $("#drawer").addEventListener("change", async (e) => {
   if (!t.dataset.kind) return;
   const url = { item: "/api/items/", posting: "/api/postings/", buyer: "/api/buyers/" }[t.dataset.kind] + t.dataset.id;
   await api("PUT", url, { [t.dataset.f]: t.value, ...(t.dataset.f.startsWith("mkt_") ? { mkt_checked: new Date().toISOString() } : {}) });
-  await refresh(t.dataset.f === "url" || t.dataset.f === "follow_up");
+  await refresh(["url", "follow_up", "pickup_at", "offer", "agreed_price", "currency", "status"].includes(t.dataset.f));
   toast("Saved");
 });
 
@@ -461,6 +536,8 @@ $("#drawer").addEventListener("click", async (e) => {
   if (a === "sell") await api("PUT", `/api/items/${sel}`, { sold: true, sold_price: $("#soldprice").value });
   if (a === "usemkt") await api("PUT", `/api/items/${sel}`, { asking: suggest(item) });
   if (a === "unsell") await api("PUT", `/api/items/${sel}`, { sold: false });
+  if (a === "removed") await api("PUT", `/api/postings/${id}`, { removed: true });
+  if (a === "notremoved") await api("PUT", `/api/postings/${id}`, { removed: false });
   if (a === "addposting") await api("POST", `/api/items/${sel}/postings`, {});
   if (a === "delposting") await api("DELETE", `/api/postings/${id}`);
   if (a === "addbuyer") await api("POST", `/api/items/${sel}/buyers`, {});
@@ -519,11 +596,11 @@ const TOUR = [
     el: () => inDrawer('[data-stage="asked"]'), ok: () => tBuyer().stage !== "contacted" },
   { t: "Your move", d: "This strip lists every follow-up that is due, on the desk and on the TV wall. Click one to jump to its ticket. When it's empty, nothing is waiting on you.",
     el: () => $("#moves") },
-  { t: "They say yes", d: "Press <b>Accepted</b>. Ember copies a wrap-up message with the price, payment, pickup spot and town. Paste it straight to the buyer.",
+  { t: "They say yes", d: "Press <b>Accepted</b>. Ember asks what price you agreed, then copies a wrap-up message with that price, payment, pickup spot and town. Paste it straight to the buyer.",
     el: () => inDrawer('[data-stage="accepted"]'), ok: () => ["accepted", "time set", "confirmed", "bought", "thanked"].includes(tBuyer().stage) },
-  { t: "Set the pickup", d: "Type the day and time in <b>Pickup day and time</b>, click outside the box, then press <b>Pickup time set</b>. The ticket turns teal.",
-    el: () => (tBuyer().meet ? inDrawer('[data-stage="time set"]') : inDrawer('[data-kind="buyer"][data-f="meet"]')), ok: () => ["time set", "confirmed", "bought", "thanked"].includes(tBuyer().stage) },
-  { t: "Paid and picked up", d: "After the handover, press <b>Paid and picked up</b>. The ticket is marked sold at your asking price and turns green.",
+  { t: "Set the pickup", d: "Pick the day and time in <b>Pickup day and time</b>, then press <b>Pickup time set</b>. The ticket turns teal. Once it's confirmed, Ember reminds you before the pickup.",
+    el: () => (tBuyer().pickup_at || tBuyer().meet ? inDrawer('[data-stage="time set"]') : inDrawer('[data-kind="buyer"][data-f="pickup_at"]')), ok: () => ["time set", "confirmed", "bought", "thanked"].includes(tBuyer().stage) },
+  { t: "Paid and picked up", d: "After the handover, press <b>Paid and picked up</b> and check the price they paid. The ticket turns green, and <b>Your move</b> lists each listing to take down on the site itself.",
     el: () => inDrawer('[data-stage="bought"]'), ok: () => !!tItem().sold_at },
   { t: "Two days later", d: "In two days, <b>Your move</b> will remind you to thank the buyer. This button copies a message that asks for feedback once, with no pressure, and closes the ticket.",
     el: () => inDrawer('[data-act="thanks"]') },

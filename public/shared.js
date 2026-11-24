@@ -34,7 +34,24 @@ const BUYER = Object.fromEntries(BUYER_STATUS.map((s) => [s.key, s]));
 const CLOSING = ["accepted", "time set", "confirmed", "bought"];
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const money = (n, digits = 2) => (n === null || n === undefined || n === "" ? "" : "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: digits }));
+// Region and currency come from the settings. Each amount is shown in its own item's currency; nothing is converted.
+const REGION_LOCALE = { US: "en-US", UK: "en-GB", IE: "en-IE", DE: "de-DE" };
+const REGION_EBAY = { US: "www.ebay.com", UK: "www.ebay.co.uk", IE: "www.ebay.ie", DE: "www.ebay.de" };
+let LOCALE = "en-US", CURRENCY = "USD", EBAY = "www.ebay.com";
+function useSettings(s = {}) {
+  LOCALE = REGION_LOCALE[s.region] || "en-US";
+  EBAY = REGION_EBAY[s.region] || "www.ebay.com";
+  CURRENCY = s.currency || "USD";
+}
+const money = (n, digits = 2, cur = CURRENCY) => (n === null || n === undefined || n === "" || !Number.isFinite(Number(n)) ? ""
+  : new Intl.NumberFormat(LOCALE, { style: "currency", currency: cur || CURRENCY, minimumFractionDigits: 0, maximumFractionDigits: digits }).format(Number(n)));
+const symbol = (cur = CURRENCY) => new Intl.NumberFormat(LOCALE, { style: "currency", currency: cur }).formatToParts(0).find((p) => p.type === "currency").value;
+// A total kept per currency, e.g. "£80 + $25". Empty totals show as zero in the default currency.
+const totals = (byCur, digits = 2) => Object.entries(byCur || {}).map(([c, n]) => money(n, digits, c)).join(" + ") || money(0, 0);
+const dateOf = (iso) => new Date(iso).toLocaleDateString(LOCALE);
+const whenOf = (iso) => new Date(iso).toLocaleString(LOCALE, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+// The price a buyer agreed, or the asking price if none was recorded.
+const dealPrice = (item, buyer) => (buyer && buyer.agreed_price !== null && buyer.agreed_price !== undefined && buyer.agreed_price !== "" ? buyer.agreed_price : item.asking);
 const days = (n) => `${n} ${n === 1 ? "day" : "days"}`;
 const ticket = (id) => `EM-${String(id).padStart(4, "0")}`;
 
@@ -67,10 +84,10 @@ function wrapUp(item, buyer, s) {
   return [
     `Hi${buyer.name ? " " + buyer.name.split(" ")[0] : ""}, thank you for your interest in the ${item.name || "item"}. I appreciate it. Let's wrap this up and confirm the details so I can get it to you.`,
     "",
-    item.asking ? `Price: ${money(item.asking)}` : "",
+    money(dealPrice(item, buyer), 2, item.currency) ? `Price: ${money(dealPrice(item, buyer), 2, item.currency)}` : "",
     `Payment: ${s.payment}, at pickup`,
     where ? `Pickup only: ${where}` : "Pickup only",
-    buyer.meet ? `Time: ${buyer.meet}` : "Time: what day and time works for you? I can do today or tomorrow.",
+    buyer.pickup_at ? `Time: ${whenOf(buyer.pickup_at)}` : buyer.meet ? `Time: ${buyer.meet}` : "Time: what day and time works for you? I can do today or tomorrow.",
     "",
     "You're welcome to look it over before you pay. Reply to confirm and I'll have it ready for you.",
   ].filter((l, k, a) => l !== "" || a[k - 1] !== "").join("\n");

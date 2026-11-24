@@ -73,8 +73,8 @@ function card(i, c) {
   const platforms = [...new Set(i.postings.map((p) => p.platform).filter(Boolean))].join(", ");
   return `<div class="card" style="--c:${c}">
     <div class="nm">${esc(i.name || "Unnamed item")}</div>
-    <div class="price">${sold ? money(i.sold_price, 0) : money(i.asking, 0)}</div>
-    ${lead && !sold ? `<div class="who">${ember(lead.updated)} ${first(lead.name)}${lead.meet ? `, ${esc(lead.meet)}` : ""} · ${esc(ago(lead.updated))}</div>`
+    <div class="price">${sold ? money(i.sold_price, 0, i.currency) : money(i.asking, 0, i.currency)}</div>
+    ${lead && !sold ? `<div class="who">${ember(lead.updated)} ${first(lead.name)}${lead.pickup_at ? `, ${esc(whenOf(lead.pickup_at))}` : lead.meet ? `, ${esc(lead.meet)}` : ""} · ${esc(ago(lead.updated))}</div>`
       : `<div class="meta">${[platforms, i.days_listed === null ? "" : sold ? `sold in ${days(i.days_listed)}` : `${days(i.days_listed)} listed`].filter(Boolean).map(esc).join(" · ")}</div>`}
   </div>`;
 }
@@ -88,9 +88,10 @@ function block(items, key, cap) {
 
 async function draw() {
   try {
-    const { items, stats: s, reminders } = await fetch("/api/board").then((r) => r.json());
+    const { items, stats: s, reminders, settings } = await fetch("/api/board").then((r) => r.json());
+    useSettings(settings);
     document.getElementById("stats").innerHTML = [
-      [reminders.length, "waiting on you", "hot"], [s.listed, "listed"], [money(s.listed_value, 0) || "$0", "asking"], [s.in_talks, "in talks"], [s.sold, "sold"], [money(s.sold_value, 0) || "$0", "taken in"],
+      [reminders.length, "waiting on you", "hot"], [s.listed, "listed"], [totals(s.listed_value, 0), "asking"], [s.in_talks, "in talks"], [s.sold, "sold"], [totals(s.sold_value, 0), "taken in"],
     ].map(([v, l, cls]) => `<div class="stat ${cls && v ? cls : ""}"><b>${esc(v)}</b><small>${l}</small></div>`).join("");
     document.getElementById("deals").innerHTML = DEAL_KEYS.map((k) => block(items, k, 4)).join("");
     document.getElementById("rest").innerHTML = ["draft", "listed", "accepted", "pickup", "sold"].map((k) => block(items, k, 3)).join("");
@@ -102,8 +103,8 @@ async function draw() {
 }
 function tick() {
   const d = new Date();
-  document.getElementById("time").textContent = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  document.getElementById("date").textContent = d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  document.getElementById("time").textContent = d.toLocaleTimeString(LOCALE, { hour: "2-digit", minute: "2-digit" });
+  document.getElementById("date").textContent = d.toLocaleDateString(LOCALE, { weekday: "long", month: "long", day: "numeric" });
 }
 draw(); tick();
 setInterval(draw, 10000);

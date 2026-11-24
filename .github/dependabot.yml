@@ -1,0 +1,11 @@
+# Dependabot: weekly pull requests for the GitHub Actions in .github/workflows.
+# Ember has no npm dependencies, so only the actions (pinned to commit hashes) need updating.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]

@@ -12,7 +12,7 @@ It runs only on this PC (address `127.0.0.1`, port 4319). Nothing is sent anywhe
 
 Ember needs [Node.js](https://nodejs.org) 22.5 or newer and nothing else. It has no packages to install.
 
-- **Installer:** run `Ember-Setup-<version>.exe`. It installs for your Windows user only (no admin rights) and adds **Ember desk** and **Ember wall** to the Start menu. Setup checks for Node.js first and stops if it is missing.
+- **Installer:** download `Ember-Setup-<version>.exe` from the [latest release](https://github.com/soybean-alien/ember/releases/latest) and run it. It installs for your Windows user only (no admin rights) and adds **Ember desk** and **Ember wall** to the Start menu. Setup checks for Node.js first and stops if it is missing.
 - **From the source:** download or clone this repository and use the two launchers below.
 
 To build the installer yourself, install [Inno Setup 6](https://jrsoftware.org/isinfo.php) and run `ISCC.exe installer\Ember.iss`. The file lands in `installer\Output`.
